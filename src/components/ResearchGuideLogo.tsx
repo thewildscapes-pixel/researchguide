@@ -10,6 +10,7 @@ interface ResearchGuideLogoProps {
   showCopyright?: boolean;
   align?: 'left' | 'center';
   allowUpload?: boolean;
+  isAdmin?: boolean;
   className?: string;
 }
 
@@ -19,9 +20,13 @@ export const ResearchGuideLogo: React.FC<ResearchGuideLogoProps> = ({
   showTagline = true,
   showCopyright = true,
   align = 'left',
-  allowUpload = true,
+  allowUpload = false,
+  isAdmin = false,
   className = '',
 }) => {
+  // Only users who are confirmed admins AND have allowUpload enabled can see the upload trigger
+  const canUpload = allowUpload && isAdmin;
+
   const [customLogo, setCustomLogo] = useState<string | null>(() => {
     try {
       return localStorage.getItem(LOGO_STORAGE_KEY);
@@ -151,18 +156,18 @@ export const ResearchGuideLogo: React.FC<ResearchGuideLogoProps> = ({
           align === 'center' ? 'flex-col items-center text-center' : 'items-center gap-5 text-left'
         } ${className}`}
       >
-        {/* Large Profile Picture / Logo Container with FB-style Camera Upload Badge */}
+        {/* Large Profile Picture / Logo Container */}
         <div className="relative shrink-0 flex items-center justify-center group">
           {/* Ambient Glow */}
           <div className="absolute inset-0 bg-gradient-to-tr from-blue-600/30 via-amber-400/20 to-yellow-300/30 blur-2xl rounded-full scale-125 pointer-events-none" />
 
           {/* Main Logo Container */}
           <div
-            onClick={() => allowUpload && setIsUploadModalOpen(true)}
+            onClick={() => canUpload && setIsUploadModalOpen(true)}
             className={`${currentSize.container} relative rounded-3xl bg-gradient-to-b from-[#0F172A] via-[#1E293B] to-[#0A0F1D] p-2 flex items-center justify-center border-2 border-slate-700/80 shadow-2xl overflow-hidden transition-all duration-300 ${
-              allowUpload ? 'cursor-pointer hover:border-blue-400 hover:shadow-blue-500/20 hover:scale-[1.02]' : ''
+              canUpload ? 'cursor-pointer hover:border-blue-400 hover:shadow-blue-500/20 hover:scale-[1.02]' : ''
             }`}
-            title={allowUpload ? 'Click to change or upload custom logo' : 'ResearchGuide Logo'}
+            title={canUpload ? 'Admin Authority: Click to change logo picture' : 'ResearchGuide Logo'}
           >
             {customLogo ? (
               // Custom Uploaded Admin Logo
@@ -218,35 +223,50 @@ export const ResearchGuideLogo: React.FC<ResearchGuideLogoProps> = ({
 
                 {/* Radiating Light Beams */}
                 <g className="animate-pulse" style={{ animationDuration: '3s' }}>
-                  <line x1="70" y1="4" x2="70" y2="0" stroke="#FDE047" strokeWidth="2.5" strokeLinecap="round" />
-                  <line x1="86" y1="9" x2="91" y2="5" stroke="#FDE047" strokeWidth="2.5" strokeLinecap="round" />
-                  <line x1="54" y1="9" x2="49" y2="5" stroke="#FDE047" strokeWidth="2.5" strokeLinecap="round" />
-                  <line x1="94" y1="20" x2="100" y2="18" stroke="#FDE047" strokeWidth="2.5" strokeLinecap="round" />
-                  <line x1="46" y1="20" x2="40" y2="18" stroke="#FDE047" strokeWidth="2.5" strokeLinecap="round" />
-                  <line x1="95" y1="33" x2="101" y2="36" stroke="#FBBF24" strokeWidth="1.8" strokeLinecap="round" />
-                  <line x1="45" y1="33" x2="39" y2="36" stroke="#FBBF24" strokeWidth="1.8" strokeLinecap="round" />
+                  <line x1="70" y1="6" x2="70" y2="0" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round" />
+                  <line x1="85" y1="12" x2="91" y2="6" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round" />
+                  <line x1="55" y1="12" x2="49" y2="6" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round" />
+                  <line x1="92" y1="24" x2="98" y2="24" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round" />
+                  <line x1="48" y1="24" x2="42" y2="24" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round" />
                 </g>
 
-                {/* Glowing Halo */}
-                <circle cx="70" cy="22" r="22" fill="url(#bulbGlow)" />
-                <circle cx="70" cy="22" r="10" fill="#FEF08A" opacity="0.35" className="animate-ping" style={{ animationDuration: '2.5s' }} />
+                {/* Glowing Aura Bulb */}
+                <circle cx="70" cy="24" r="26" fill="url(#bulbGlow)" />
 
-                {/* Overhead Bulb */}
+                {/* Light Bulb Glass Body */}
                 <path
-                  d="M60 22 C60 15 64 10 70 10 C76 10 80 15 80 22 C80 26 77 28 76 31 L64 31 C63 28 60 26 60 22 Z"
+                  d="M62 31 C57 28 55 23 55 18 C55 10 61.5 5 70 5 C78.5 5 85 10 85 18 C85 23 83 28 78 31 L78 35 C78 36 77 37 76 37 L64 37 C63 37 62 36 62 35 Z"
                   fill="url(#bulbGrad)"
                   stroke="#FBBF24"
                   strokeWidth="1.5"
                 />
-                <path d="M66 22 L68 17 L70 20 L72 17 L74 22" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                <rect x="64.5" y="31" width="11" height="2" rx="0.8" fill="#94A3B8" stroke="#64748B" strokeWidth="0.5" />
-                <rect x="65.5" y="33.5" width="9" height="2" rx="0.8" fill="#94A3B8" stroke="#64748B" strokeWidth="0.5" />
-                <path d="M67 36 L73 36 L71.5 38 L68.5 38 Z" fill="#475569" />
 
-                {/* Side-View Brain */}
-                <path d="M66 112 C67 106 68 100 70 94 L78 95 C77 102 76 108 74 114 C71 116 68 115 66 112 Z" fill="#1E293B" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" />
-                <g>
-                  <path d="M75 92 C82 86 98 88 102 96 C105 104 98 114 87 114 C80 114 74 108 75 98 Z" fill="url(#cerebellumG)" stroke="#60A5FA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                {/* Filament */}
+                <path
+                  d="M66 22 L68 14 L70 20 L72 14 L74 22"
+                  stroke="#DC2626"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="animate-pulse"
+                />
+
+                {/* Screw Base of Bulb */}
+                <path d="M64 37 L76 37" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" />
+                <path d="M65 40 L75 40" stroke="#64748B" strokeWidth="2" strokeLinecap="round" />
+                <path d="M67 43 L73 43" stroke="#475569" strokeWidth="2" strokeLinecap="round" />
+
+                {/* Cerebellum */}
+                <path
+                  d="M80 88 C88 88 102 92 104 104 C106 114 96 122 84 120 C76 119 72 112 74 102 C75 95 78 90 80 88 Z"
+                  fill="url(#cerebellumG)"
+                  stroke="#38BDF8"
+                  strokeWidth="2"
+                />
+
+                {/* Cerebellum Folia Lines */}
+                <g opacity="0.6">
+                  <path d="M80 94 C86 92 94 94 98 98" stroke="#93C5FD" strokeWidth="1.5" strokeLinecap="round" />
                   <path d="M78 98 C84 96 92 98 97 103" stroke="#93C5FD" strokeWidth="1.5" strokeLinecap="round" />
                   <path d="M80 104 C85 103 91 106 94 109" stroke="#93C5FD" strokeWidth="1.5" strokeLinecap="round" />
                 </g>
@@ -275,8 +295,8 @@ export const ResearchGuideLogo: React.FC<ResearchGuideLogoProps> = ({
               </svg>
             )}
 
-            {/* Facebook-Style Hover Dark Overlay */}
-            {allowUpload && (
+            {/* Admin-Only Facebook-Style Hover Dark Overlay */}
+            {canUpload && (
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 select-none backdrop-blur-2xs">
                 <Camera className={currentSize.cameraIcon} />
                 <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-center px-1">
@@ -286,14 +306,14 @@ export const ResearchGuideLogo: React.FC<ResearchGuideLogoProps> = ({
             )}
           </div>
 
-          {/* Facebook-Style Floating Camera Badge on Bottom-Right */}
-          {allowUpload && (
+          {/* Admin-Only Facebook-Style Floating Camera Badge on Bottom-Right */}
+          {canUpload && (
             <button
               type="button"
               id="admin-upload-logo-badge-btn"
               onClick={() => setIsUploadModalOpen(true)}
-              aria-label="Upload custom logo"
-              title="Update Logo / Change Profile Picture"
+              aria-label="Upload custom logo (Admin authority)"
+              title="Admin Authority: Update Logo / Change Picture"
               className={`absolute -bottom-1 -right-1 ${currentSize.cameraBadge} rounded-full bg-[#2563EB] text-white border-2 border-white shadow-lg hover:bg-blue-700 transition-transform transform hover:scale-110 active:scale-95 cursor-pointer z-20`}
             >
               <Camera className={currentSize.cameraIcon} />
@@ -333,8 +353,8 @@ export const ResearchGuideLogo: React.FC<ResearchGuideLogoProps> = ({
         )}
       </div>
 
-      {/* Facebook-Style Profile Photo / Logo Upload Modal */}
-      {isUploadModalOpen && (
+      {/* Admin Logo Upload Modal */}
+      {isUploadModalOpen && canUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-200 relative overflow-hidden">
             {/* Header */}
@@ -344,11 +364,16 @@ export const ResearchGuideLogo: React.FC<ResearchGuideLogoProps> = ({
                   <Camera className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
-                    Update Application Logo
-                  </h3>
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                      Update Application Logo
+                    </h3>
+                    <span className="px-1.5 py-0.5 bg-blue-100 text-[#2563EB] text-[9px] font-black uppercase rounded tracking-wider">
+                      Admin Authority
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-500 font-medium">
-                    Upload institutional crest, university insignia, or custom profile image.
+                    Upload institutional crest, university insignia, or custom logo picture.
                   </p>
                 </div>
               </div>

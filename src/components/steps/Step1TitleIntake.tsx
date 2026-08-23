@@ -22,7 +22,7 @@ interface Step1Props {
 }
 
 const REGION_PRESETS = [
-  'East Khasi Hills, Meghalaya',
+  'East Khasi Hills & Jaintia, Meghalaya',
   'Kohima & Mokokchung, Nagaland',
   'Dibrugarh & Tinsukia (Tea Gardens), Assam',
   'Imphal Valley & Hill Districts, Manipur',
@@ -30,7 +30,13 @@ const REGION_PRESETS = [
   'Papum Pare & West Siang, Arunachal Pradesh',
   'West Tripura & Dhalai, Tripura',
   'East & South Districts, Sikkim',
-  'General Northeast India (Comparative)',
+  'Delhi NCR & Northern Gangetic Plains',
+  'Bengaluru & Southern Urban Hubs',
+  'Mumbai, Pune & Western India',
+  'Himalayan & High-Altitude Ecosystems',
+  'Central Tribal Belt (Jharkhand, Odisha, CG)',
+  'Global / International Fieldwork Region',
+  'Open Fieldwork Community / Area',
 ];
 
 export const Step1TitleIntake: React.FC<Step1Props> = ({ data, onUpdate, onComplete }) => {

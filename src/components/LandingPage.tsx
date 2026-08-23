@@ -16,15 +16,11 @@ import {
   Compass,
   FileCheck,
   Award,
+  AlertCircle,
 } from 'lucide-react';
+import { UserSession, isValidEmail, isValidPhone, isUserAdmin } from '../utils/auth';
 
-export interface UserSession {
-  email: string;
-  mobile: string;
-  name?: string;
-  institution?: string;
-  loginTime: string;
-}
+export type { UserSession };
 
 interface LandingPageProps {
   onLogin: (session: UserSession) => void;
@@ -43,42 +39,53 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
     e.preventDefault();
     setError(null);
 
-    // Basic Validation
-    if (!email.trim() || !email.includes('@')) {
-      setError('Please provide a valid academic or professional email address.');
+    const trimmedEmail = email.trim();
+    const rawMobile = mobile.trim();
+
+    // Strict validation: Email is required and must have valid format
+    if (!trimmedEmail) {
+      setError('Please enter your email address to continue.');
       return;
     }
 
-    if (!mobile.trim() || mobile.replace(/\D/g, '').length < 8) {
-      setError('Please enter a valid mobile number with at least 8 digits.');
+    if (!isValidEmail(trimmedEmail)) {
+      setError('Please enter a valid email address (e.g., scholar@university.ac.in or researcher@gmail.com).');
+      return;
+    }
+
+    // Strict validation: Mobile number is required and must contain at least 10 digits
+    if (!rawMobile) {
+      setError('Please enter your mobile phone number.');
+      return;
+    }
+
+    if (!isValidPhone(rawMobile)) {
+      setError('Please enter a valid mobile number with at least 10 digits.');
       return;
     }
 
     setIsSubmitting(true);
 
-    const session: UserSession = {
-      email: email.trim(),
-      mobile: `${countryCode} ${mobile.trim()}`,
-      name: name.trim() || email.split('@')[0],
+    const fullMobile = `${countryCode} ${rawMobile}`;
+    const potentialSession: UserSession = {
+      email: trimmedEmail,
+      mobile: fullMobile,
+      name: name.trim() || trimmedEmail.split('@')[0],
       institution: institution.trim() || 'Social Science Research Scholar',
       loginTime: new Date().toISOString(),
+    };
+
+    // Check if this researcher is the authorized administrator
+    const isAdmin = isUserAdmin(potentialSession);
+    const session: UserSession = {
+      ...potentialSession,
+      isAdmin,
     };
 
     setTimeout(() => {
       onLogin(session);
       setIsSubmitting(false);
-    }, 300);
-  };
-
-  const handleQuickDemoLogin = () => {
-    const session: UserSession = {
-      email: 'thewildscapes@gmail.com',
-      mobile: '+91 98765 43210',
-      name: 'Dr. A. Sharma (Scholar)',
-      institution: 'Gauhati University / ICSSR Research Fellow',
-      loginTime: new Date().toISOString(),
-    };
-    onLogin(session);
+    }, 250);
   };
 
   return (
@@ -86,15 +93,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       {/* Top Navigation Bar */}
       <header className="border-b border-[#E5E7EB] bg-white/90 backdrop-blur-md sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
-          <ResearchGuideLogo size="sm" showTagline={false} />
+          <ResearchGuideLogo size="sm" showTagline={false} allowUpload={false} isAdmin={false} />
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleQuickDemoLogin}
-              className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#2563EB] border border-blue-200 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
-            >
-              Instant Demo Access
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold">
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>Researcher Portal</span>
+            </div>
           </div>
         </div>
       </header>
@@ -102,7 +107,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       {/* Main Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-12 sm:py-16">
         <div className="w-full max-w-5xl mx-auto space-y-12">
-          {/* Centered Brand Showcase: Large Logo with Facebook-Style Profile Pic Upload Badge */}
+          {/* Centered Brand Showcase */}
           <div className="text-center flex flex-col items-center justify-center space-y-4">
             <ResearchGuideLogo
               size="2xl"
@@ -110,13 +115,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               showText={true}
               showTagline={true}
               showCopyright={true}
-              allowUpload={true}
+              allowUpload={false}
+              isAdmin={false}
             />
 
             <p className="max-w-2xl text-xs sm:text-sm text-slate-600 leading-relaxed mx-auto font-medium">
               An institutional social science methodology engine designed for scholars,
               doctoral candidates, and fieldwork researchers navigating quantitative sampling,
-              mixed-methods architectures, and ethics governance.
+              mixed-methods architectures, variable operationalization, and ethics governance.
             </p>
           </div>
 
@@ -131,20 +137,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                     Researcher Sign In
                   </h3>
                 </div>
-                <p className="text-xs text-slate-500 font-medium">
-                  Enter your email and mobile number to access your multi-project research dashboard.
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  Enter your valid email address and mobile phone number to authenticate and access your research projects.
                 </p>
               </div>
 
               {error && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium flex items-center gap-2">
-                  <span>⚠️</span>
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-semibold flex items-start gap-2 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
                   <span>{error}</span>
                 </div>
               )}
 
               <form onSubmit={handleFormSubmit} className="space-y-4">
-                {/* Email Field */}
+                {/* Email Field - MANDATORY */}
                 <div className="space-y-1">
                   <label
                     htmlFor="researcher-email"
@@ -160,19 +166,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="e.g. scholar@university.ac.in"
+                      placeholder="scholar@university.edu"
                       className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
                     />
                   </div>
                 </div>
 
-                {/* Mobile Number Field with Country Code */}
+                {/* Mobile Number Field - MANDATORY */}
                 <div className="space-y-1">
                   <label
                     htmlFor="researcher-mobile"
                     className="block text-xs font-bold uppercase tracking-wider text-slate-700"
                   >
-                    Mobile Number <span className="text-red-500">*</span>
+                    Mobile Phone No. <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
                     <select
@@ -188,6 +194,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                       <option value="+977">🇳🇵 +977</option>
                       <option value="+975">🇧🇹 +975</option>
                       <option value="+95">🇲🇲 +95</option>
+                      <option value="+49">🇩🇪 +49</option>
+                      <option value="+33">🇫🇷 +33</option>
+                      <option value="+81">🇯🇵 +81</option>
                     </select>
 
                     <div className="relative flex-1">
@@ -198,11 +207,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                         required
                         value={mobile}
                         onChange={(e) => setMobile(e.target.value)}
-                        placeholder="98765 43210"
+                        placeholder="10-digit mobile no."
                         className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
                       />
                     </div>
                   </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Please provide a valid 10-digit phone number.
+                  </p>
                 </div>
 
                 {/* Optional Scholar Name */}
@@ -211,7 +223,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                     htmlFor="researcher-name"
                     className="block text-xs font-bold uppercase tracking-wider text-slate-700"
                   >
-                    Scholar Name <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
+                    Scholar / Researcher Name <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
                   </label>
                   <div className="relative">
                     <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -232,14 +244,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                     htmlFor="researcher-institution"
                     className="block text-xs font-bold uppercase tracking-wider text-slate-700"
                   >
-                    University / Institution <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
+                    University / Department / Institution <span className="text-slate-400 font-normal text-[10px]">(Optional)</span>
                   </label>
                   <input
                     id="researcher-institution"
                     type="text"
                     value={institution}
                     onChange={(e) => setInstitution(e.target.value)}
-                    placeholder="e.g. Gauhati University / NEHU / ICSSR Fellow"
+                    placeholder="e.g. University / ICSSR / Research Institute"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
                   />
                 </div>
@@ -247,23 +259,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                 {/* Submit Action */}
                 <button
                   type="submit"
+                  id="researcher-sign-in-btn"
                   disabled={isSubmitting}
                   className="w-full py-3 bg-[#2563EB] hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
                 >
-                  <span>{isSubmitting ? 'Authenticating...' : 'Enter Research Dashboard'}</span>
+                  <span>{isSubmitting ? 'Verifying Credentials...' : 'Enter Research Dashboard'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
-
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-center">
-                <button
-                  type="button"
-                  onClick={handleQuickDemoLogin}
-                  className="text-xs font-bold text-[#2563EB] hover:underline cursor-pointer"
-                >
-                  Or continue with One-Click Demo Session →
-                </button>
-              </div>
             </div>
 
             {/* Right Column: 9-Step Methodology Matrix Showcase */}

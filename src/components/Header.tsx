@@ -13,10 +13,11 @@ import {
   User,
   ArrowLeft,
   FolderKanban,
+  ShieldCheck,
 } from 'lucide-react';
 import { ResearchProject, StepNumber } from '../types';
 import { ResearchGuideLogo } from './ResearchGuideLogo';
-import { UserSession } from './LandingPage';
+import { UserSession, isUserAdmin } from '../utils/auth';
 
 interface HeaderProps {
   project: ResearchProject;
@@ -50,6 +51,8 @@ export const Header: React.FC<HeaderProps> = ({
   const [showProjectPicker, setShowProjectPicker] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  const isAdmin = isUserAdmin(userSession);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -67,8 +70,6 @@ export const Header: React.FC<HeaderProps> = ({
     reader.readAsText(file);
   };
 
-  const completedCount = project.completedSteps.length;
-  const progressPercent = Math.round((completedCount / 9) * 100);
   const activeTitle = project.step1.approvedTitle || project.step1.workingTitle || 'Untitled Study';
 
   return (
@@ -93,6 +94,8 @@ export const Header: React.FC<HeaderProps> = ({
             showText={true}
             showTagline={true}
             showCopyright={true}
+            allowUpload={isAdmin}
+            isAdmin={isAdmin}
             className="cursor-pointer"
           />
         </div>
@@ -147,29 +150,62 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* User Session Badge */}
+          {/* User Session Badge - Strictly shows only the currently logged in researcher's info */}
           {userSession && (
             <div
-              className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-100 rounded-lg border border-slate-200 text-slate-700 text-xs shadow-2xs"
-              title={`Logged in as ${userSession.name || userSession.email} (${userSession.mobile})`}
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs shadow-2xs ${
+                isAdmin
+                  ? 'bg-gradient-to-r from-blue-900 to-slate-900 text-white border-blue-800'
+                  : 'bg-slate-100 border-slate-200 text-slate-700'
+              }`}
+              title={
+                isAdmin
+                  ? 'System Administrator Account'
+                  : `Logged in as ${userSession.name || userSession.email}`
+              }
             >
-              <div className="w-5 h-5 rounded-full bg-[#2563EB] text-white flex items-center justify-center text-[10px] font-black shrink-0">
-                {(userSession.name?.[0] || userSession.email[0] || 'U').toUpperCase()}
+              <div
+                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                  isAdmin ? 'bg-amber-400 text-slate-950' : 'bg-[#2563EB] text-white'
+                }`}
+              >
+                {isAdmin ? '★' : (userSession.name?.[0] || userSession.email[0] || 'U').toUpperCase()}
               </div>
+
               <div className="hidden lg:block text-left leading-tight">
-                <span className="font-bold text-slate-900 block text-[11px] max-w-[120px] truncate">
-                  {userSession.name || userSession.email}
-                </span>
-                <span className="text-[9px] text-slate-500 font-medium block">
+                <div className="flex items-center gap-1">
+                  <span
+                    className={`font-bold block text-[11px] max-w-[120px] truncate ${
+                      isAdmin ? 'text-white' : 'text-slate-900'
+                    }`}
+                  >
+                    {userSession.name || userSession.email}
+                  </span>
+                  {isAdmin && (
+                    <span className="px-1 py-0.2 bg-amber-400 text-slate-950 text-[8px] font-black uppercase rounded tracking-wider">
+                      Admin
+                    </span>
+                  )}
+                </div>
+                <span
+                  className={`text-[9px] font-medium block truncate ${
+                    isAdmin ? 'text-slate-300' : 'text-slate-500'
+                  }`}
+                >
                   {userSession.mobile}
                 </span>
               </div>
+
               {onLogout && (
                 <button
                   id="user-logout-btn"
                   onClick={onLogout}
-                  title="Sign out to landing page"
-                  className="p-1 text-slate-400 hover:text-red-600 hover:bg-white rounded transition-colors cursor-pointer ml-0.5"
+                  title="Sign out of research session"
+                  className={`p-1 rounded transition-colors cursor-pointer ml-0.5 ${
+                    isAdmin
+                      ? 'text-slate-400 hover:text-white hover:bg-white/10'
+                      : 'text-slate-400 hover:text-red-600 hover:bg-white'
+                  }`}
                   aria-label="Sign out"
                 >
                   <LogOut className="w-3.5 h-3.5" />
