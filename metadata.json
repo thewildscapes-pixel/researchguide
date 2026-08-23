@@ -1,0 +1,8 @@
+{
+  "name": "ResearchGuide",
+  "description": "Interactive AI-powered methodology assistant for social science researchers, specializing in Northeast India contexts and international publication standards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
