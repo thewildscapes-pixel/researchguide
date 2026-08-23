@@ -68,11 +68,11 @@ async function generateWithFallback(
     const model = FALLBACK_MODELS[i];
     try {
       const config: any = {};
-      if (options.responseMimeType) {
-        config.responseMimeType = options.responseMimeType;
-      }
-      if (options.tools) {
+      // In Google GenAI SDK, do NOT combine tools (e.g. googleSearch) with responseMimeType
+      if (options.tools && options.tools.length > 0) {
         config.tools = options.tools;
+      } else if (options.responseMimeType) {
+        config.responseMimeType = options.responseMimeType;
       }
       if (options.temperature !== undefined) {
         config.temperature = options.temperature;
@@ -296,14 +296,18 @@ Return a valid JSON object matching this exact structure:
 
 // STEP 2: Literature Context with Search Grounding
 app.post('/api/literature-context', async (req, res) => {
-  const { title, description, targetRegion, keyTerms } = req.body;
+  const { title, description, targetRegion, keyTerms } = req.body || {};
+  const safeTitle = (title || keyTerms || 'Social Science Empirical Inquiry').trim();
+  const safeDesc = (description || `Study exploring ${safeTitle}`).trim();
+  const safeRegion = (targetRegion || 'Northeast India / General Fieldwork Region').trim();
+  const safeTerms = (keyTerms || safeTitle).trim();
 
   try {
     const prompt = `You are a research literature specialist helping a social science researcher map the academic landscape.
-Research Title: "${title}"
-Description: "${description}"
-Geographic Focus: "${targetRegion || 'Northeast India'}"
-Key Terms: "${keyTerms || ''}"
+Research Title: "${safeTitle}"
+Description: "${safeDesc}"
+Geographic Focus: "${safeRegion}"
+Key Terms: "${safeTerms}"
 
 Perform a targeted search of academic literature. Pay special attention to peer-reviewed studies, international social science journals, and reputable Northeast India research bodies (such as North-Eastern Hill University [NEHU], Tezpur University, IIT Guwahati, ICSSR-NERC, Omeo Kumar Das Institute of Social Change and Development [OKDISCD], Gauhati University, Rajiv Gandhi University).
 
@@ -315,7 +319,7 @@ Analyze and organize your findings into:
 
 Provide clear, honest assessment. Do not fabricate citations; cite genuine works and research themes.
 
-Format your response in structured JSON with:
+Format your response as a valid JSON object matching this structure:
 {
   "summary": "2-3 paragraph synthesis of current literature state",
   "existingStudies": [
@@ -340,14 +344,22 @@ Format your response in structured JSON with:
   "searchTakeaways": "Key advice for the researcher's literature review chapter"
 }`;
 
-    const response = await generateWithFallback(prompt, {
-      tools: [{ googleSearch: {} }],
-      responseMimeType: 'application/json',
-    });
+    let response;
+    try {
+      // 1. Try with Google Search tool first (without responseMimeType since tool is active)
+      response = await generateWithFallback(prompt, {
+        tools: [{ googleSearch: {} }],
+      });
+    } catch (searchToolErr) {
+      console.warn('Search tool call failed, trying standard JSON generation:', searchToolErr);
+      response = await generateWithFallback(prompt, {
+        responseMimeType: 'application/json',
+      });
+    }
 
-    const parsed = safeParseJson(response.text, {});
-    if (parsed && parsed.summary && parsed.existingStudies) {
-      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const parsed = safeParseJson(response?.text, null);
+    if (parsed && (parsed.summary || (Array.isArray(parsed.existingStudies) && parsed.existingStudies.length > 0))) {
+      const groundingChunks = response?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       const webSources = groundingChunks
         .filter((chunk: any) => chunk.web && chunk.web.uri)
         .map((chunk: any) => ({
@@ -359,29 +371,35 @@ Format your response in structured JSON with:
         ...parsed,
         groundingSources: webSources.length > 0 ? webSources : [
           { title: 'ICSSR North-Eastern Regional Centre', url: 'https://icssr-nerc.org' },
-          { title: 'OKD Institute of Social Change and Development', url: 'https://okd.res.in' }
+          { title: 'OKD Institute of Social Change and Development', url: 'https://okd.res.in' },
+          { title: 'North-Eastern Hill University Research Repository', url: 'https://nehu.ac.in' },
+          { title: 'Economic and Political Weekly (EPW)', url: 'https://www.epw.in' }
         ],
       });
     }
     throw new Error('Incomplete response from literature model');
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for literature context:', error.message);
-    const fallback = generateLiteratureFallback(title, description, targetRegion, keyTerms);
-    res.json(fallback);
+    const fallback = generateLiteratureFallback(safeTitle, safeDesc, safeRegion, safeTerms);
+    return res.json(fallback);
   }
 });
 
 // STEP 3: Research Type & Design Recommendation
 app.post('/api/research-design', async (req, res) => {
-  const { title, description, literatureGap, targetRegion } = req.body;
+  const { title, description, literatureGap, targetRegion } = req.body || {};
+  const safeTitle = (title || 'Social Science Empirical Inquiry').trim();
+  const safeDesc = (description || `Study exploring ${safeTitle}`).trim();
+  const safeGap = (literatureGap || '').trim();
+  const safeRegion = (targetRegion || 'Northeast India / General Fieldwork Region').trim();
 
   try {
     const prompt = `You are a social science research methodologist.
 Recommend the optimal research design, paradigm, and statistical approach for this study:
-Title: "${title}"
-Description: "${description}"
-Literature Gap: "${literatureGap || ''}"
-Field Context: "${targetRegion || 'Northeast India (may involve small accessible populations, hill terrain, tribal/rural communities, multilingual contexts)'}"
+Title: "${safeTitle}"
+Description: "${safeDesc}"
+Literature Gap: "${safeGap}"
+Field Context: "${safeRegion} (may involve small accessible populations, hill terrain, tribal/rural communities, multilingual contexts)"
 
 Provide a thorough, pedagogically rich recommendation considering field realities in social sciences (including when sample sizes in remote hill/tribal districts may be modest, data distributions may be skewed/non-normal, or mixed-methods are required for deep cultural validity).
 
@@ -412,28 +430,31 @@ Format as JSON:
       responseMimeType: 'application/json',
     });
 
-    const parsed = safeParseJson(response.text, null);
+    const parsed = safeParseJson(response?.text, null);
     if (parsed && parsed.recommendedDesign) {
       return res.json(parsed);
     }
     throw new Error('Incomplete response from research design model');
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for research design:', error.message);
-    const fallback = generateResearchDesignFallback(title, description, literatureGap, targetRegion);
-    res.json(fallback);
+    const fallback = generateResearchDesignFallback(safeTitle, safeDesc, safeGap, safeRegion);
+    return res.json(fallback);
   }
 });
 
 // STEP 4: Constructs, Variables & Operational Definitions
 app.post('/api/constructs-variables', async (req, res) => {
-  const { title, description, researchDesign } = req.body;
+  const { title, description, researchDesign } = req.body || {};
+  const safeTitle = (title || 'Social Science Empirical Inquiry').trim();
+  const safeDesc = (description || `Study exploring ${safeTitle}`).trim();
+  const safeDesign = (researchDesign || 'Empirical Social Science').trim();
 
   try {
     const prompt = `You are a measurement and construct operationalization expert in social sciences.
 Help the researcher define and operationalize their variables for:
-Title: "${title}"
-Description: "${description}"
-Design: "${researchDesign || ''}"
+Title: "${safeTitle}"
+Description: "${safeDesc}"
+Design: "${safeDesign}"
 
 Identify:
 1. Independent Variables (IVs), Dependent Variables (DVs), Mediators, Moderators, and Control Variables (or Key Phenomenological Themes for qualitative studies).
@@ -463,27 +484,30 @@ Format as JSON:
       responseMimeType: 'application/json',
     });
 
-    const parsed = safeParseJson(response.text, null);
+    const parsed = safeParseJson(response?.text, null);
     if (parsed && Array.isArray(parsed.variables) && parsed.variables.length > 0) {
       return res.json(parsed);
     }
     throw new Error('Incomplete response from constructs model');
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for constructs:', error.message);
-    const fallback = generateConstructsVariablesFallback(title, description, researchDesign);
-    res.json(fallback);
+    const fallback = generateConstructsVariablesFallback(safeTitle, safeDesc, safeDesign);
+    return res.json(fallback);
   }
 });
 
 // STEP 5: Conceptual Framework & Hypotheses Generation & Relational Mapping
 app.post('/api/conceptual-framework', async (req, res) => {
-  const { title, description, researchDesign, variables } = req.body;
+  const { title, description, researchDesign, variables } = req.body || {};
+  const safeTitle = (title || 'Social Science Empirical Inquiry').trim();
+  const safeDesc = (description || `Study exploring ${safeTitle}`).trim();
+  const safeDesign = (researchDesign || 'Empirical Social Science').trim();
 
   try {
     const prompt = `You are an expert social science research methodologist specializing in conceptual model building, path diagrams, and hypothesis formulation.
-Study Title: "${title}"
-Description: "${description}"
-Design: "${researchDesign || 'Empirical Social Science'}"
+Study Title: "${safeTitle}"
+Description: "${safeDesc}"
+Design: "${safeDesign}"
 
 Identified Constructs & Variables from Step 4:
 ${Array.isArray(variables) && variables.length > 0
@@ -529,33 +553,36 @@ Format as JSON:
       responseMimeType: 'application/json',
     });
 
-    const parsed = safeParseJson(response.text, null);
+    const parsed = safeParseJson(response?.text, null);
     if (parsed && Array.isArray(parsed.relationships) && parsed.relationships.length > 0) {
       return res.json(parsed);
     }
     throw new Error('Incomplete response from conceptual framework model');
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for conceptual framework:', error.message);
-    const fallback = generateConceptualFrameworkFallback(title, description, researchDesign, variables);
-    res.json(fallback);
+    const fallback = generateConceptualFrameworkFallback(safeTitle, safeDesc, safeDesign, variables);
+    return res.json(fallback);
   }
 });
 
 // STEP 5: Objectives & Hypotheses Alignment Check
 app.post('/api/check-alignment', async (req, res) => {
-  const { title, description, researchDesign, objectives, hypotheses } = req.body;
+  const { title, description, researchDesign, objectives, hypotheses } = req.body || {};
+  const safeTitle = (title || 'Social Science Empirical Inquiry').trim();
+  const safeDesc = (description || `Study exploring ${safeTitle}`).trim();
+  const safeDesign = (researchDesign || 'Empirical Social Science').trim();
 
   try {
     const prompt = `You are a dissertation and grant committee reviewer evaluating research alignment.
-Research Title: "${title}"
-Description: "${description}"
-Design: "${researchDesign || 'Empirical Social Science'}"
+Research Title: "${safeTitle}"
+Description: "${safeDesc}"
+Design: "${safeDesign}"
 
 Draft Objectives provided by researcher:
-${Array.isArray(objectives) ? objectives.map((obj: string, i: number) => `Objective ${i + 1}: ${obj}`).join('\n') : objectives}
+${Array.isArray(objectives) ? objectives.map((obj: string, i: number) => `Objective ${i + 1}: ${obj}`).join('\n') : (objectives || 'None')}
 
 Draft Hypotheses / Research Questions provided by researcher:
-${Array.isArray(hypotheses) ? hypotheses.map((hyp: string, i: number) => `Hypothesis ${i + 1}: ${hyp}`).join('\n') : hypotheses}
+${Array.isArray(hypotheses) ? hypotheses.map((hyp: string, i: number) => `Hypothesis ${i + 1}: ${hyp}`).join('\n') : (hypotheses || 'None')}
 
 Perform a rigorous alignment audit:
 1. Does each objective map directly back to the title and research scope?
@@ -608,15 +635,15 @@ Format as JSON:
       responseMimeType: 'application/json',
     });
 
-    const parsed = safeParseJson(response.text, null);
+    const parsed = safeParseJson(response?.text, null);
     if (parsed && parsed.overallAlignmentScore) {
       return res.json(parsed);
     }
     throw new Error('Incomplete response from alignment model');
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for alignment check:', error.message);
-    const fallback = generateAlignmentFallback(title, description, researchDesign, objectives, hypotheses);
-    res.json(fallback);
+    const fallback = generateAlignmentFallback(safeTitle, safeDesc, safeDesign, objectives, hypotheses);
+    return res.json(fallback);
   }
 });
 
@@ -631,18 +658,26 @@ app.post('/api/sampling-recommendation', async (req, res) => {
     stateOrDistrict,
     hasRemoteHillAccess,
     timeAndResourceLimits,
-  } = req.body;
+  } = req.body || {};
+
+  const safeTitle = (title || 'Social Science Empirical Inquiry').trim();
+  const safeDesign = (researchDesign || 'Empirical Social Science').trim();
+  const safeTargetPop = (targetPopulation || 'Community members and households').trim();
+  const safeAccessiblePop = (accessiblePopulation || 'Households across accessible village clusters').trim();
+  const safeField = (fieldSetting || 'Mixed Rural/Urban/Hill').trim();
+  const safeState = (stateOrDistrict || 'Northeast India').trim();
+  const safeLimits = (timeAndResourceLimits || 'Standard academic master/doctoral timeline').trim();
 
   try {
     const prompt = `You are a social science sampling and fieldwork methodologist specializing in field research in Northeast India.
-Study: "${title}"
-Design: "${researchDesign}"
-Target Population: "${targetPopulation}"
-Accessible Population: "${accessiblePopulation}"
-Field Setting: "${fieldSetting || 'Mixed Rural/Urban/Hill'}"
-Specific Geography/District: "${stateOrDistrict || 'Northeast India'}"
+Study: "${safeTitle}"
+Design: "${safeDesign}"
+Target Population: "${safeTargetPop}"
+Accessible Population: "${safeAccessiblePop}"
+Field Setting: "${safeField}"
+Specific Geography/District: "${safeState}"
 Remote / Hill Terrain Involved: ${hasRemoteHillAccess ? 'Yes' : 'No'}
-Constraints: "${timeAndResourceLimits || 'Standard academic master/doctoral timeline'}"
+Constraints: "${safeLimits}"
 
 Provide an expert sampling recommendation that balances statistical rigor with Northeast India field realities:
 - Dispersed rural/hill hamlets, seasonal monsoon road blockages.
@@ -683,7 +718,7 @@ Format as JSON:
       responseMimeType: 'application/json',
     });
 
-    const parsed = safeParseJson(response.text, null);
+    const parsed = safeParseJson(response?.text, null);
     if (parsed && parsed.recommendedMethod) {
       return res.json(parsed);
     }
@@ -691,32 +726,35 @@ Format as JSON:
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for sampling plan:', error.message);
     const fallback = generateSamplingFallback(
-      title,
-      researchDesign,
-      targetPopulation,
-      accessiblePopulation,
-      fieldSetting,
-      stateOrDistrict,
+      safeTitle,
+      safeDesign,
+      safeTargetPop,
+      safeAccessiblePop,
+      safeField,
+      safeState,
       hasRemoteHillAccess,
-      timeAndResourceLimits
+      safeLimits
     );
-    res.json(fallback);
+    return res.json(fallback);
   }
 });
 
 // STEP 7: Statistical Tools & Assumptions
 app.post('/api/statistical-tools', async (req, res) => {
-  const { title, researchDesign, variables, hypotheses, sampleSize, dataType } = req.body;
+  const { title, researchDesign, variables, hypotheses, sampleSize, dataType } = req.body || {};
+  const safeTitle = (title || 'Social Science Empirical Inquiry').trim();
+  const safeDesign = (researchDesign || 'Empirical Social Science').trim();
+  const safeDataType = (dataType || 'Mixed categorical and continuous Likert scales').trim();
 
   try {
     const prompt = `You are a senior statistical consultant for social science research.
 Recommend specific statistical tests, qualitative analysis techniques, and assumption verification protocols for:
-Title: "${title}"
-Design: "${researchDesign}"
+Title: "${safeTitle}"
+Design: "${safeDesign}"
 Variables: ${JSON.stringify(variables || [])}
 Hypotheses: ${JSON.stringify(hypotheses || [])}
 Estimated Sample Size: ${sampleSize || '150-300'}
-Data Type: "${dataType || 'Mixed categorical and continuous Likert scales'}"
+Data Type: "${safeDataType}"
 
 Provide an exact, publication-ready analytical plan:
 1. Specific primary and secondary statistical tests (e.g., Independent Samples t-test / Welch's t-test, Mann-Whitney U, One-way ANOVA, Kruskal-Wallis, Chi-square test of independence, Multiple Linear Regression, Binary/Ordinal Logistic Regression, Structural Equation Modeling / PLS-SEM, or Thematic Analysis / Braun & Clarke).
@@ -765,30 +803,35 @@ Format as JSON:
       responseMimeType: 'application/json',
     });
 
-    const parsed = safeParseJson(response.text, null);
+    const parsed = safeParseJson(response?.text, null);
     if (parsed && Array.isArray(parsed.primaryTests) && parsed.primaryTests.length > 0) {
       return res.json(parsed);
     }
     throw new Error('Incomplete response from statistical tools model');
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for statistical tools:', error.message);
-    const fallback = generateStatisticalToolsFallback(title, researchDesign, variables, hypotheses, sampleSize, dataType);
-    res.json(fallback);
+    const fallback = generateStatisticalToolsFallback(safeTitle, safeDesign, variables, hypotheses, sampleSize, safeDataType);
+    return res.json(fallback);
   }
 });
 
 // STEP 8: Ethics & Cultural Context Protocol
 app.post('/api/ethics-check', async (req, res) => {
-  const { title, targetCommunity, targetRegion, researchDesign, fieldSetting } = req.body;
+  const { title, targetCommunity, targetRegion, researchDesign, fieldSetting } = req.body || {};
+  const safeTitle = (title || 'Social Science Empirical Inquiry').trim();
+  const safeCommunity = (targetCommunity || 'Indigenous and local communities in Northeast India').trim();
+  const safeRegion = (targetRegion || 'Northeast India (Sixth Schedule / ADC areas / Tribal Hill Tracts)').trim();
+  const safeDesign = (researchDesign || 'Empirical Social Science').trim();
+  const safeSetting = (fieldSetting || 'Rural and Hill Districts').trim();
 
   try {
     const prompt = `You are an institutional ethics committee (IEC) chair and indigenous research ethics specialist.
 Review the ethical dimensions of this social science study:
-Title: "${title}"
-Community/Participants: "${targetCommunity || 'Indigenous and local communities in Northeast India'}"
-Geographic Region: "${targetRegion || 'Northeast India (Sixth Schedule / ADC areas / Tribal Hill Tracts)'}"
-Research Design: "${researchDesign || ''}"
-Field Context: "${fieldSetting || ''}"
+Title: "${safeTitle}"
+Community/Participants: "${safeCommunity}"
+Geographic Region: "${safeRegion}"
+Research Design: "${safeDesign}"
+Field Context: "${safeSetting}"
 
 Identify critical ethical considerations and protocols:
 1. Special considerations for Scheduled Tribes / Indigenous communities, minors, or historically vulnerable populations.
@@ -830,27 +873,27 @@ Format as JSON:
       responseMimeType: 'application/json',
     });
 
-    const parsed = safeParseJson(response.text, null);
+    const parsed = safeParseJson(response?.text, null);
     if (parsed && parsed.vulnerabilityAssessment) {
       return res.json(parsed);
     }
     throw new Error('Incomplete response from ethics model');
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for ethics check:', error.message);
-    const fallback = generateEthicsFallback(title, targetCommunity, targetRegion, researchDesign, fieldSetting);
-    res.json(fallback);
+    const fallback = generateEthicsFallback(safeTitle, safeCommunity, safeRegion, safeDesign, safeSetting);
+    return res.json(fallback);
   }
 });
 
 // STEP 9: Full Publication-Ready Methodology Synthesis
 app.post('/api/generate-full-summary', async (req, res) => {
-  const { projectData } = req.body;
+  const { projectData } = req.body || {};
 
   try {
     const prompt = `You are a high-level academic editor and methodologist. Synthesize all 8 steps of this research project into a comprehensive, publication-grade Methodology Chapter / Research Proposal section (APA 7th Edition style).
 
 Project Data:
-${JSON.stringify(projectData, null, 2)}
+${JSON.stringify(projectData || {}, null, 2)}
 
 Produce a rigorous academic text structured with clear Markdown headers:
 1. # Research Methodology: [Approved Title]
@@ -874,7 +917,7 @@ Ensure high scholarly tone, clear academic rationale ("why"), no generic filler,
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for methodology synthesis:', error.message);
     const fallbackSummary = generateFullSummaryFallback(projectData);
-    res.json({ markdownSummary: fallbackSummary });
+    return res.json({ markdownSummary: fallbackSummary });
   }
 });
 

@@ -62,14 +62,15 @@ export function generateTitleFallback(
 }
 
 export function generateLiteratureFallback(
-  title: string,
-  description: string,
+  title: string = 'Social Science Inquiry',
+  description: string = '',
   targetRegion: string = 'Northeast India',
   keyTerms: string = ''
 ) {
-  const region = targetRegion.trim() || 'Northeast India';
+  const safeTitle = (title || keyTerms || 'Social Science Empirical Inquiry').trim();
+  const region = (targetRegion || 'Northeast India').trim() || 'Northeast India';
   return {
-    summary: `Scholarly inquiry surrounding "${title}" reflects an expanding corpus of social science research. While mainstream Indian and international scholarship provides foundational theoretical models (e.g., institutional theory, capability approaches, social-ecological systems frameworks), empirical research specifically grounded in ${region} remains disproportionately limited. Existing regional literature from centers like North-Eastern Hill University (NEHU), Tezpur University, Gauhati University, OKDISCD (Guwahati), and ICSSR-NERC highlights distinct socio-political, customary governance, and ecological specificities that standard pan-Indian frameworks often fail to capture.`,
+    summary: `Scholarly inquiry surrounding "${safeTitle}" reflects an expanding corpus of social science research. While mainstream Indian and international scholarship provides foundational theoretical models (e.g., institutional theory, capability approaches, social-ecological systems frameworks), empirical research specifically grounded in ${region} remains disproportionately limited. Existing regional literature from centers like North-Eastern Hill University (NEHU), Tezpur University, Gauhati University, OKDISCD (Guwahati), and ICSSR-NERC highlights distinct socio-political, customary governance, and ecological specificities that standard pan-Indian frameworks often fail to capture.`,
     existingStudies: [
       {
         theme: 'Socio-Ecological & Institutional Dynamics',
