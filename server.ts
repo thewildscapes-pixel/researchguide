@@ -47,6 +47,7 @@ function getGenAI(): GoogleGenAI {
 const FALLBACK_MODELS = [
   'gemini-3.7-flash',
   'gemini-flash-latest',
+  'gemini-3.1-flash-lite',
 ];
 
 interface GenerateOptions {
@@ -83,7 +84,9 @@ async function generateWithFallback(
         config: Object.keys(config).length > 0 ? config : undefined,
       });
 
-      return response;
+      if (response && (response.text || response.candidates?.length)) {
+        return response;
+      }
     } catch (err: any) {
       lastError = err;
       const errString = String(err?.message || err || '');
@@ -111,7 +114,9 @@ async function generateWithFallback(
             contents: prompt,
             config: options.responseMimeType ? { responseMimeType: options.responseMimeType } : undefined,
           });
-          return response;
+          if (response && (response.text || response.candidates?.length)) {
+            return response;
+          }
         } catch (retryErr: any) {
           lastError = retryErr;
         }
@@ -160,18 +165,55 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', hasApiKey: !!process.env.GEMINI_API_KEY });
 });
 
-// Helper to safely parse JSON from Gemini response
+// Helper to safely parse JSON from Gemini response with multiple extraction heuristics
 function safeParseJson(text: string | undefined, defaultVal: any) {
   if (!text) return defaultVal;
   try {
-    const cleaned = text
-      .trim()
+    // 1. Direct trimmed parse
+    const trimmed = text.trim();
+    const cleaned = trimmed
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
-      .replace(/\s*```$/, '');
-    return JSON.parse(cleaned);
+      .replace(/\s*```$/, '')
+      .trim();
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      // 2. Extract JSON block from within code blocks
+      const jsonBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (jsonBlockMatch && jsonBlockMatch[1]) {
+        try {
+          return JSON.parse(jsonBlockMatch[1].trim());
+        } catch {
+          // continue
+        }
+      }
+      // 3. Extract between first { and last }
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        const jsonStr = text.substring(firstBrace, lastBrace + 1);
+        try {
+          return JSON.parse(jsonStr);
+        } catch {
+          // continue
+        }
+      }
+      // 4. Extract between first [ and last ]
+      const firstBracket = text.indexOf('[');
+      const lastBracket = text.lastIndexOf(']');
+      if (firstBracket !== -1 && lastBracket > firstBracket) {
+        const jsonStr = text.substring(firstBracket, lastBracket + 1);
+        try {
+          return JSON.parse(jsonStr);
+        } catch {
+          // continue
+        }
+      }
+    }
+    return defaultVal;
   } catch (err) {
-    console.error('Failed to parse JSON from Gemini:', text, err);
+    console.error('Failed to parse JSON from Gemini response:', err);
     return defaultVal;
   }
 }
@@ -179,17 +221,21 @@ function safeParseJson(text: string | undefined, defaultVal: any) {
 // STEP 1: Title & Topic Bias/Validity Analysis
 app.post('/api/analyze-title', async (req, res) => {
   const { workingTitle, description, targetRegion } = req.body;
-  if (!workingTitle || !description) {
-    return res.status(400).json({ error: 'Title and description are required' });
+  if (!workingTitle || !workingTitle.trim()) {
+    return res.status(400).json({ error: 'Please enter a working research title.' });
   }
+
+  const cleanTitle = workingTitle.trim();
+  const descToUse = description && description.trim() ? description.trim() : `Social science inquiry exploring: ${cleanTitle}`;
+  const regionToUse = targetRegion && targetRegion.trim() ? targetRegion.trim() : 'Northeast India / General';
 
   try {
     const prompt = `You are a senior social science methodologist and academic reviewer with expertise in high-impact international journals and specific sensitivity to research in Northeast India (Assam, Meghalaya, Nagaland, Manipur, Mizoram, Tripura, Arunachal Pradesh, Sikkim) as well as global indigenous and marginalized contexts.
 
 Analyze this working research title and description:
-Working Title: "${workingTitle}"
-Description: "${description}"
-Target Geographic/Community Scope: "${targetRegion || 'Northeast India / General'}"
+Working Title: "${cleanTitle}"
+Description: "${descToUse}"
+Target Geographic/Community Scope: "${regionToUse}"
 
 Thoroughly evaluate:
 1. Loaded, leading, or culturally biased language (e.g. deficit framing like "backwardness", "tribal mindset", "lack of modern awareness", "insurgency-ridden", framing that "others" a community, ethnocentric assumptions from mainland-India or Western literature applied uncritically to Northeast Indian or indigenous contexts).
@@ -236,15 +282,15 @@ Return a valid JSON object matching this exact structure:
       responseMimeType: 'application/json',
     });
 
-    const result = safeParseJson(response.text, null);
-    if (result && result.overallAssessment) {
+    const result = safeParseJson(response?.text, null);
+    if (result && (result.overallAssessment || result.suggestedTitles)) {
       return res.json(result);
     }
     throw new Error('Incomplete response received from model');
   } catch (error: any) {
     console.warn('Falling back to local academic heuristic engine for title analysis:', error.message);
-    const fallback = generateTitleFallback(workingTitle, description, targetRegion);
-    res.json(fallback);
+    const fallback = generateTitleFallback(cleanTitle, descToUse, regionToUse);
+    return res.json(fallback);
   }
 });
 
